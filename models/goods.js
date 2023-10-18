@@ -16,7 +16,7 @@ const goodsShema = new Schema({
     photo: {
         type: String,
         required: [true, 'Set url']
-    }
+    },
 }, { versionKey: false, timestamps: false });
 
 goodsShema.post('save', hendleMongooseError);
