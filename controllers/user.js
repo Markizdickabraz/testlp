@@ -7,7 +7,7 @@ const { nanoid } = require("nanoid");
 const { User } = require('../models/user');
 const { SECRET_KEY, BASE_URL } = process.env;
 
-const {ctrlWrapper, HttpError, sendEmail } = require('../helpers');
+const { ctrlWrapper, HttpError, sendEmail } = require('../helpers');
 
 const register = async (req, res) => {
     const { email, password } = req.body;

@@ -6,6 +6,7 @@ require("dotenv").config();
 
 const authRouter = require('./routes/api/user')
 const contactsRouter = require("./routes/api/contacts");
+const goodsRouter = require("./routes/api/goods");
 
 const app = express()
 
@@ -19,6 +20,7 @@ app.use(express.static("public"));
 
 app.use("/api/user", authRouter)
 app.use("/api/contacts", contactsRouter);
+app.use("/api/goods", goodsRouter); 
 
 
 app.use((req, res) => {
