@@ -1,11 +1,7 @@
 require('dotenv').config();
 const bcryt = require("bcrypt");
 const jwt = require('jsonwebtoken');    
-const fs = require('fs/promises');
-const path = require("path");
-const avatarsDir = path.join(__dirname, "../", "public", "avatars");
-const gravatar = require("gravatar");
-const jimp = require("jimp");
+
 const { nanoid } = require("nanoid");
 
 const { User } = require('../models/user');
@@ -22,10 +18,9 @@ const register = async (req, res) => {
     };
 
     const createHashPass = await bcryt.hash(password, 10);
-    const avatarUrl = gravatar.url(email);
     const verificationToken = nanoid();
 
-    const newUser = await User.create({ ...req.body, avatarUrl, password: createHashPass, verificationToken });
+    const newUser = await User.create({ ...req.body, password: createHashPass, verificationToken });
 
     const verifyEmail = {
         to: email,
@@ -130,25 +125,6 @@ const updateSubscription = async (req, res) => {
   res.status(200).json(result);
 };
 
-const updateAvatar = async (req, res) => {
-    const { _id } = req.user;
-    const { path: tmpUploud, originalname } = req.file;
-    const fileName = `${_id}_${originalname} `;
-    const result = path.join(avatarsDir, fileName);
-    await fs.rename(tmpUploud, result);
-
-    const avatar = await jimp.read(result);
-    await avatar.resize(250, 250);
-    await avatar.writeAsync(result);
-    
-    const avatarUrl = path.join('avatars', fileName); 
-    await User.findByIdAndUpdate(_id, { avatarUrl });
-
-    res.status(200).json({
-        avatarUrl,
-    });
-};
-
 module.exports = {
     register: ctrlWrapper(register),
     verifyEmail: ctrlWrapper(verifyEmail),
@@ -157,5 +133,4 @@ module.exports = {
     getCurrent: ctrlWrapper(getCurrent),
     logout: ctrlWrapper(logout),
     updateSubscription: ctrlWrapper(updateSubscription),
-    updateAvatar: ctrlWrapper(updateAvatar)
 };
