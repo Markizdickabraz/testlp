@@ -1,136 +1,58 @@
-require('dotenv').config();
-const bcryt = require("bcrypt");
+const { Pool } = require('pg');
+const bcrypt = require('bcrypt');
+const dbConfig = require('../dbConfig/dbConfig');
 const jwt = require('jsonwebtoken');    
 
-const { nanoid } = require("nanoid");
+const pool = new Pool(dbConfig);
 
-const { User } = require('../models/user');
-const { SECRET_KEY, BASE_URL } = process.env;
+// новий коритсувач
+const createUser = async (request, reply) => {
+  try {
+    const { username, email, password } = request.body;
 
-const { ctrlWrapper, HttpError, sendEmail } = require('../helpers');
+    const hashedPassword = await bcrypt.hash(password, 10);
 
-const register = async (req, res) => {
-    const { email, password } = req.body;
-    const user = await User.findOne({ email });
-    
-    if (user) {
-        throw HttpError(409, "Email in use");
-    };
+    const insertUserQuery = 'INSERT INTO users (username, email, password) VALUES ($1, $2, $3) RETURNING id';
+    const result = await pool.query(insertUserQuery, [username, email, hashedPassword]);
+    const userId = result.rows[0].id;
 
-    const createHashPass = await bcryt.hash(password, 10);
-    const verificationToken = nanoid();
+    reply.code(201).send({ userId, message: 'Користувача зареєстровано' });
+  } catch (error) {
+    console.error('Помилка при реєстрації користувача:', error);
+    reply.code(500).send({ message: 'Помилка сервера' });
+  }
+};
 
-    const newUser = await User.create({ ...req.body, password: createHashPass, verificationToken });
+// loginUser
+const login = async (request, reply) => {
+  try {
+    const { username, password } = request.body;
 
-    const verifyEmail = {
-        to: email,
-        subject: 'Verify email',
-        html: `<a target="_blank" href="${BASE_URL}/api/user/verify/${verificationToken}">Click verify email</a>`
+    const userQuery = 'SELECT id, username, password FROM users WHERE username = $1';
+    const result = await pool.query(userQuery, [username]);
+
+    if (result.rows.length === 0) {
+      reply.code(401).send({ message: 'Неправильне ім\'я користувача або пароль' });
+      return;
     }
 
-    await sendEmail(verifyEmail);
+    const user = result.rows[0];
 
-    res.status(201).json({
-        email: newUser.email,
-        subscription: newUser.subscription,
-    })
-};
+    const isPasswordValid = await bcrypt.compare(password, user.password);
 
-const verifyEmail = async (req, res) => {
-    const { verificationToken } = req.params;
-    const user = await User.findOne({ verificationToken });
-
-    if (!user) {
-        throw HttpError(401, "Invalid token");
+    if (!isPasswordValid) {
+      reply.code(401).send({ message: 'Неправильне ім\'я користувача або пароль' });
+      return;
     }
 
-    await User.findByIdAndUpdate(user._id, { verify: true, verificationToken: null });
+    const token = jwt.sign({ userId: user.id, username: user.username }, '0ViyG4VRl6', { expiresIn: '1h' });
 
-    res.status(200).json({
-        message: 'Verification successful',
-    })
+    reply.send({ message: 'Ви успішно увійшли в систему', token });
+  } catch (error) {
+    console.error('Помилка під час авторизації користувача:', error);
+    reply.code(500).send({ message: 'Помилка сервера' });
+  }
 };
 
-const resendVerifyEmail = async (req, res) => {
-    const { email } = req.user;
-    const user = await User.findOne({ email })
-    if (!user) {
-        throw HttpError(401, "Email not found");
-    }
-    if (user.verify) {
-        throw HttpError(401, "Verification has already been passed");
-            
-    }
-    const verifyEmail = {
-        to: email,
-        subject: 'Verify email',
-        html: `<a target="_blank" href="${BASE_URL}/api/user/verify/${user.verificationToken}">Click verify email</a>`
-    };
-    await sendEmail(verifyEmail);
 
-    res.status(200).json({
-        message: 'Verification email sent',
-    });
-};
-
-const login = async (req, res) => {
-    const { email, password } = req.body;
-    const user = await User.findOne({ email });
-    if (!user) {
-        throw HttpError(401, "Email or password is wrong")
-    }
-
-    if (!user.verify) {
-        throw HttpError(401, "No verify");
-    }
-
-    const passCompare = await bcryt.compare(password, user.password);
-    if (!passCompare) {
-        throw HttpError(401, "Email or password is wrong");
-    }
-
-    const payload = {
-        id: user._id,
-    };
-    
-    const token = jwt.sign(payload, SECRET_KEY, { expiresIn: '23h' });
-    await User.findByIdAndUpdate(user._id, {token})
-
-    res.status(200).json({
-        token
-    })
-};
-
-const getCurrent = async (req, res) => {
-    const { email, subscription } = req.user;
-    res.json({
-        email,
-        subscription
-    })
-};
-
-const logout = async (req, res) => {
-    const { _id } = req.user;
-    await User.findByIdAndUpdate(_id, { token: "" });
-
-    res.status(204).json({
-        message: "No content",
-    })
-};
-
-const updateSubscription = async (req, res) => {
-  const { _id } = req.user;
-  const result = await User.findByIdAndUpdate(_id, req.body, { new: true });
-
-  res.status(200).json(result);
-};
-
-module.exports = {
-    register: ctrlWrapper(register),
-    verifyEmail: ctrlWrapper(verifyEmail),
-    resendVerifyEmail: ctrlWrapper(resendVerifyEmail),
-    login: ctrlWrapper(login),
-    getCurrent: ctrlWrapper(getCurrent),
-    logout: ctrlWrapper(logout),
-    updateSubscription: ctrlWrapper(updateSubscription),
-};
+module.exports = { createUser, login };
